@@ -1,50 +1,75 @@
-import streamlit as st
 import os
-import openai
-import speech_recognition as sr
+import streamlit as st
 from dotenv import load_dotenv
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, ClientSettings
+import speech_recognition as sr
+from pydub import AudioSegment
+import numpy as np
+import openai
+import tempfile
 
-# Load environment variables
+# Load API key
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Streamlit page setup
 st.set_page_config(page_title="🎙️ ChatGPT Voice Bot")
-st.title("🎙️ Talk to ChatGPT - Voice Bot")
+st.title("🎙️ Chat with ChatGPT using Your Voice")
 
-# Instruction
-st.markdown("""
-Ask ChatGPT personal-style questions like:
-- What’s your life story in a few sentences?
-- What’s your #1 superpower?
-- How do you push your boundaries?
+st.markdown("Click the record button, speak your question, and ChatGPT will respond.")
 
-Just upload your voice (WAV format) and let ChatGPT answer!
-""")
+# Set up WebRTC
+WEBRTC_CLIENT_SETTINGS = ClientSettings(
+    rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+    media_stream_constraints={"audio": True, "video": False},
+)
 
-# Upload audio file
-audio_file = st.file_uploader("🎤 Upload your question (WAV format)", type=["wav"])
+class AudioProcessor(AudioProcessorBase):
+    def __init__(self) -> None:
+        self.recorded_frames = []
 
-if audio_file is not None:
-    recognizer = sr.Recognizer()
-    try:
-        with sr.AudioFile(audio_file) as source:
-            st.info("Transcribing your voice...")
+    def recv(self, frame):
+        audio = frame.to_ndarray()
+        self.recorded_frames.append(audio)
+        return frame
+
+ctx = webrtc_streamer(
+    key="chatgpt-voice",
+    mode="SENDRECV",
+    client_settings=WEBRTC_CLIENT_SETTINGS,
+    audio_processor_factory=AudioProcessor,
+    media_stream_constraints={"audio": True, "video": False},
+)
+
+if st.button("📝 Submit Voice to ChatGPT"):
+    if ctx.audio_processor and ctx.audio_processor.recorded_frames:
+        # Convert audio numpy array to WAV
+        audio_data = np.concatenate(ctx.audio_processor.recorded_frames, axis=0).astype(np.int16)
+        temp_wav_path = tempfile.mktemp(suffix=".wav")
+        audio_segment = AudioSegment(
+            audio_data.tobytes(), frame_rate=16000, sample_width=2, channels=1
+        )
+        audio_segment.export(temp_wav_path, format="wav")
+
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(temp_wav_path) as source:
             audio = recognizer.record(source)
-            question = recognizer.recognize_google(audio)
-            st.success(f"🗣️ You asked: {question}")
+            st.info("Transcribing your voice...")
+            try:
+                question = recognizer.recognize_google(audio)
+                st.success(f"You asked: {question}")
 
-            # Ask ChatGPT
-            response = openai.ChatCompletion.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are ChatGPT. Answer questions about yourself with creativity, depth, and personality."},
-                    {"role": "user", "content": question}
-                ]
-            )
-            answer = response["choices"][0]["message"]["content"]
-            st.markdown("### 🤖 ChatGPT says:")
-            st.write(answer)
+                response = openai.ChatCompletion.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "You are ChatGPT. Answer questions about yourself with personality, insight, and creativity."},
+                        {"role": "user", "content": question}
+                    ]
+                )
+                answer = response["choices"][0]["message"]["content"]
+                st.markdown("### 🤖 ChatGPT says:")
+                st.write(answer)
 
-    except Exception as e:
-        st.error(f"Error: {e}")
+            except Exception as e:
+                st.error(f"Error transcribing audio: {e}")
+    else:
+        st.warning("No audio recorded yet.")

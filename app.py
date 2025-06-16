@@ -1,75 +1,84 @@
-import os
 import streamlit as st
+import openai
+import os
 from dotenv import load_dotenv
-from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, ClientSettings
 import speech_recognition as sr
 from pydub import AudioSegment
-import numpy as np
-import openai
-import tempfile
+import io
 
 # Load API key
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 st.set_page_config(page_title="🎙️ ChatGPT Voice Bot")
-st.title("🎙️ Chat with ChatGPT using Your Voice")
+st.title("🎙️ Talk to ChatGPT Using Your Voice")
 
-st.markdown("Click the record button, speak your question, and ChatGPT will respond.")
+st.markdown("**Click to record, ask your question, and ChatGPT will answer!**")
 
-# Set up WebRTC
-WEBRTC_CLIENT_SETTINGS = ClientSettings(
-    rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-    media_stream_constraints={"audio": True, "video": False},
-)
+# Audio recorder using Streamlit's HTML + JavaScript trick
+st.markdown("""
+    <script>
+    let mediaRecorder;
+    let audioChunks = [];
 
-class AudioProcessor(AudioProcessorBase):
-    def __init__(self) -> None:
-        self.recorded_frames = []
+    function startRecording() {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.start();
 
-    def recv(self, frame):
-        audio = frame.to_ndarray()
-        self.recorded_frames.append(audio)
-        return frame
+                mediaRecorder.ondataavailable = function(e) {
+                    audioChunks.push(e.data);
+                };
 
-ctx = webrtc_streamer(
-    key="chatgpt-voice",
-    mode="SENDRECV",
-    client_settings=WEBRTC_CLIENT_SETTINGS,
-    audio_processor_factory=AudioProcessor,
-    media_stream_constraints={"audio": True, "video": False},
-)
+                mediaRecorder.onstop = function() {
+                    let blob = new Blob(audioChunks, { 'type': 'audio/wav; codecs=MS_PCM' });
+                    let fileReader = new FileReader();
+                    fileReader.onloadend = function () {
+                        let arrayBuffer = fileReader.result;
+                        window.parent.postMessage({ type: 'streamlit:audio', audio: arrayBuffer }, '*');
+                    };
+                    fileReader.readAsArrayBuffer(blob);
+                };
 
-if st.button("📝 Submit Voice to ChatGPT"):
-    if ctx.audio_processor and ctx.audio_processor.recorded_frames:
-        # Convert audio numpy array to WAV
-        audio_data = np.concatenate(ctx.audio_processor.recorded_frames, axis=0).astype(np.int16)
-        temp_wav_path = tempfile.mktemp(suffix=".wav")
-        audio_segment = AudioSegment(
-            audio_data.tobytes(), frame_rate=16000, sample_width=2, channels=1
-        )
-        audio_segment.export(temp_wav_path, format="wav")
+                setTimeout(() => mediaRecorder.stop(), 5000);
+            });
+    }
 
-        recognizer = sr.Recognizer()
-        with sr.AudioFile(temp_wav_path) as source:
-            audio = recognizer.record(source)
-            st.info("Transcribing your voice...")
-            try:
-                question = recognizer.recognize_google(audio)
-                st.success(f"You asked: {question}")
+    window.addEventListener("message", (event) => {
+        if (event.data.type === "streamlit:startRecording") {
+            audioChunks = [];
+            startRecording();
+        }
+    });
+    </script>
 
-                response = openai.ChatCompletion.create(
-                    model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": "You are ChatGPT. Answer questions about yourself with personality, insight, and creativity."},
-                        {"role": "user", "content": question}
-                    ]
-                )
-                answer = response["choices"][0]["message"]["content"]
-                st.markdown("### 🤖 ChatGPT says:")
-                st.write(answer)
+    <button onclick="window.parent.postMessage({ type: 'streamlit:startRecording' }, '*')">🎤 Record 5s</button>
+""", unsafe_allow_html=True)
 
-            except Exception as e:
-                st.error(f"Error transcribing audio: {e}")
-    else:
-        st.warning("No audio recorded yet.")
+# Receive audio from frontend
+audio_bytes = st.file_uploader("Upload audio if recorded already (WAV)", type=["wav"])
+
+if audio_bytes is not None:
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(audio_bytes) as source:
+        audio = recognizer.record(source)
+        st.info("Transcribing...")
+        try:
+            question = recognizer.recognize_google(audio)
+            st.success(f"You said: {question}")
+
+            # Ask ChatGPT
+            response = openai.ChatCompletion.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You are ChatGPT. Answer questions about yourself with insight and personality."},
+                    {"role": "user", "content": question}
+                ]
+            )
+            answer = response["choices"][0]["message"]["content"]
+            st.markdown("### 🤖 ChatGPT replies:")
+            st.write(answer)
+
+        except Exception as e:
+            st.error(f"Could not process your voice: {e}")

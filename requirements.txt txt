@@ -1,0 +1,5 @@
+streamlit>=1.45.0
+openai
+speechrecognition
+pyttsx3
+python-dotenv

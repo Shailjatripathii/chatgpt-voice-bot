@@ -1,6 +1,6 @@
 streamlit
 openai
-streamlit_webrtc
 speechrecognition
 pydub
 python-dotenv
+

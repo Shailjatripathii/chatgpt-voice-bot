@@ -1,7 +1,7 @@
 import os
-import openai
 import streamlit as st
 from dotenv import load_dotenv
+from openai import OpenAI
 from gtts import gTTS
 import io
 import hashlib
@@ -10,17 +10,11 @@ from audio_recorder_streamlit import audio_recorder
 
 # Must be first command
 st.set_page_config(page_title="Voice Assistant", page_icon="🎙️")
-client = openai.OpenAI()
+
 # === Setup ===
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
-response = openai.ChatCompletion.create(
-    model="gpt-4o",
-    messages=[
-        {"role": "system", "content": "You are ChatGPT, a helpful assistant."},
-        {"role": "user", "content": text}
-    ]
-)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 # === Simple UI ===
 st.title("🎙️ Voice Assistant")
 st.write("Press to record your question (hold for 5 seconds)")
@@ -58,15 +52,35 @@ audio_bytes = audio_recorder(
 def process_audio(audio_data):
     with NamedTemporaryFile(suffix=".wav") as tmp:
         tmp.write(audio_data)
-        audio_file = genai.upload_file(tmp.name, mime_type="audio/wav")
-        response = model.generate_content(["Transcribe:", audio_file])
-        genai.delete_file(audio_file.name)
-        return response.text
+        tmp.seek(0)
+        transcript = client.audio.transcriptions.create(
+            file=tmp,
+            model="whisper-1"
+        )
+        return transcript.text
 
 def text_to_speech(text):
     audio = io.BytesIO()
     gTTS(text, lang='en').write_to_fp(audio)
     return audio.getvalue()
+
+def get_chat_response(prompt):
+    # Prepare conversation history for context
+    messages = [{"role": "system", "content": "You are a helpful assistant."}]
+    
+    # Add previous conversation (last 4 exchanges to manage token count)
+    for msg in st.session_state.conversation[-8:]:
+        messages.append({"role": msg['role'], "content": msg['content']})
+    
+    # Add current prompt
+    messages.append({"role": "user", "content": prompt})
+    
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=messages,
+        temperature=0.7
+    )
+    return response.choices[0].message.content
 
 # Handle new audio
 if audio_bytes and len(audio_bytes) > 0:
@@ -84,8 +98,7 @@ if audio_bytes and len(audio_bytes) > 0:
                 st.session_state.conversation.append({'role': 'user', 'content': text})
                 
                 # Get response
-                response = model.generate_content(text)
-                response_text = response.text
+                response_text = get_chat_response(text)
                 response_audio = text_to_speech(response_text)
                 
                 st.session_state.conversation.append({
@@ -106,8 +119,7 @@ if prompt := st.chat_input("Or type your question..."):
         st.session_state.processing = True
         with st.spinner("Thinking..."):
             try:
-                response = model.generate_content(prompt)
-                response_text = response.text
+                response_text = get_chat_response(prompt)
                 response_audio = text_to_speech(response_text)
                 
                 st.session_state.conversation.extend([

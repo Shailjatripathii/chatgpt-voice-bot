@@ -16,11 +16,7 @@ load_dotenv()
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 response = openai.ChatCompletion.create(
-    model="gpt-4o",
-    messages=[
-        {"role": "system", "content": "You are ChatGPT, a helpful AI assistant."},
-        {"role": "user", "content": question}
-    ]
+    model="gpt-4o"
 )
 # === Simple UI ===
 st.title("🎙️ Voice Assistant")

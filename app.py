@@ -13,11 +13,8 @@ st.set_page_config(page_title="Voice Assistant", page_icon="🎙️")
 client = openai.OpenAI()
 # === Setup ===
 load_dotenv()
-load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
-response = openai.ChatCompletion.create(
-    model="gpt-4o"
-)
+client = openai.OpenAI(api_key=openai_api_key)
 # === Simple UI ===
 st.title("🎙️ Voice Assistant")
 st.write("Press to record your question (hold for 5 seconds)")

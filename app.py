@@ -2,7 +2,6 @@ import os
 import openai
 import streamlit as st
 from dotenv import load_dotenv
-import google.generativeai as genai
 from gtts import gTTS
 import io
 import hashlib

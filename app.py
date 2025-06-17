@@ -1,4 +1,5 @@
 import os
+import openai
 import streamlit as st
 from dotenv import load_dotenv
 import google.generativeai as genai
@@ -13,9 +14,14 @@ st.set_page_config(page_title="Voice Assistant", page_icon="🎙️")
 
 # === Setup ===
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
-
+genai.configure(api_key=os.getenv("OPENAI_API_KEY"))
+response = openai.ChatCompletion.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": "You are ChatGPT, a helpful AI assistant."},
+        {"role": "user", "content": question}
+    ]
+)
 # === Simple UI ===
 st.title("🎙️ Voice Assistant")
 st.write("Press to record your question (hold for 5 seconds)")

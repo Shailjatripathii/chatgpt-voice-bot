@@ -10,7 +10,7 @@ from audio_recorder_streamlit import audio_recorder
 
 # Must be first command
 st.set_page_config(page_title="Voice Assistant", page_icon="🎙️")
-
+client = openai.OpenAI()
 # === Setup ===
 load_dotenv()
 load_dotenv()

@@ -14,7 +14,13 @@ client = openai.OpenAI()
 # === Setup ===
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
-client = openai.OpenAI(api_key=openai_api_key)
+response = openai.ChatCompletion.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": "You are ChatGPT, a helpful assistant."},
+        {"role": "user", "content": text}
+    ]
+)
 # === Simple UI ===
 st.title("🎙️ Voice Assistant")
 st.write("Press to record your question (hold for 5 seconds)")

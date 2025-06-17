@@ -13,7 +13,8 @@ st.set_page_config(page_title="Voice Assistant", page_icon="🎙️")
 
 # === Setup ===
 load_dotenv()
-genai.configure(api_key=os.getenv("OPENAI_API_KEY"))
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 response = openai.ChatCompletion.create(
     model="gpt-4o",
     messages=[
